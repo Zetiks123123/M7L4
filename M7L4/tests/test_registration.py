@@ -1,0 +1,70 @@
+import pytest
+import sqlite3
+import os
+from registration.registration import create_db, add_user, authenticate_user, display_users
+
+@pytest.fixture(scope="module")
+def setup_database():
+    """Фикстура для настройки базы данных перед тестами и её очистки после."""
+    create_db()
+    yield
+    try:
+        os.remove('users.db')
+    except PermissionError:
+        pass
+
+@pytest.fixture
+def connection():
+    """Фикстура для получения соединения с базой данных и его закрытия после теста."""
+    conn = sqlite3.connect('users.db')
+    yield conn
+    conn.close()
+
+
+def test_create_db(setup_database, connection):
+    """Тест создания базы данных и таблицы пользователей."""
+    cursor = connection.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
+    table_exists = cursor.fetchone()
+    assert table_exists, "Таблица 'users' должна существовать в базе данных."
+
+def test_add_new_user(setup_database, connection):
+    """Тест добавления нового пользователя."""
+    add_user('testuser', 'testuser@example.com', 'password123')
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM users WHERE username='testuser';")
+    user = cursor.fetchone()
+    assert user, "Пользователь должен быть добавлен в базу данных."
+
+# Возможные варианты тестов:
+def test_userlogin(setup_database, connection):
+    add_user('existinguser', 'existing@example.com', 'pass123')
+    result = add_user('existinguser', 'newemail@example.com', 'newpass456')
+    
+    assert result == False
+
+
+def test_userauth_successful(setup_database, connection):
+    add_user('authuser', 'auth@example.com', 'correctpassword')
+    result = authenticate_user('authuser', 'correctpassword')
+    
+    assert result == True
+
+
+def test_authenticate_user(setup_database, connection):
+    result = authenticate_user('nonexistentuser', 'anypassword')
+    
+    assert result == False
+
+
+def test_wrong_password(setup_database, connection):
+    add_user('wrongpassuser', 'wrong@example.com', 'correctpassword')
+    result = authenticate_user('wrongpassuser', 'wrongpassword')
+    
+    assert result == False
+
+
+def test_spisok_userov(setup_database, connection, capsys):
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM users;")
+    connection.commit()
